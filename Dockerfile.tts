@@ -1,0 +1,49 @@
+FROM python:3.11-slim-bookworm
+
+ARG V_TTS_COMMIT=e22eef3267869375e40a096b376cde94aa41e610
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    CUDA_VISIBLE_DEVICES="" \
+    OMP_NUM_THREADS=2 \
+    OPENBLAS_NUM_THREADS=2 \
+    MKL_NUM_THREADS=2
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+       build-essential \
+       espeak-ng \
+       ffmpeg \
+       fonts-liberation \
+       git \
+       libsndfile1 \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install CPU-only PyTorch explicitly so pip never pulls CUDA runtime packages.
+RUN pip install --no-cache-dir \
+      torch==2.5.1+cpu torchaudio==2.5.1+cpu \
+      --index-url https://download.pytorch.org/whl/cpu
+
+# Sparse checkout avoids the repository's large Android ONNX and demo assets.
+RUN set -eux; \
+    for attempt in 1 2 3; do \
+      git clone --depth 1 --filter=blob:none --no-checkout --branch dev \
+        https://github.com/tronghieuit/v-tts.git /opt/v-tts && break; \
+      rm -rf /opt/v-tts; \
+      test "$attempt" -lt 3; \
+      sleep 2; \
+    done; \
+    git -C /opt/v-tts sparse-checkout init --cone \
+    && git -C /opt/v-tts sparse-checkout set v_tts src setup.py README.md \
+    && git -C /opt/v-tts checkout "${V_TTS_COMMIT}" \
+    && sed -i '/"gradio>=5.0.0",/d' /opt/v-tts/setup.py \
+    && pip install --no-cache-dir /opt/v-tts \
+    && rm -rf /opt/v-tts/.git
+
+WORKDIR /app
+COPY . .
+RUN pip install --no-cache-dir .
+
+ENTRYPOINT ["python", "-m"]
+CMD ["poc.tts", "--help"]

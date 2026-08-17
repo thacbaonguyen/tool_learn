@@ -1,0 +1,8 @@
+artifacts/
+data/models/
+data/app.db*
+data/projects/
+data_sample/
+**/__pycache__/
+**/*.pyc
+.git/

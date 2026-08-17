@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% block title %}{{ project.name }} · Local Video Lessons{% endblock %}
+{% block content %}
+  <a href="/projects" class="back-link">← Tất cả projects</a>
+
+  <section class="page-heading">
+    <div>
+      <h1>{{ project.name }}</h1>
+      <p>Upload video và kiểm tra metadata ngay trên máy.</p>
+    </div>
+    <form action="/projects/{{ project.id }}/delete" method="post" onsubmit="return confirm('Xóa project và toàn bộ video?')">
+      <button type="submit" class="danger secondary">Xóa project</button>
+    </form>
+  </section>
+
+  {% if error %}<div class="alert">{{ error }}</div>{% endif %}
+
+  <div class="two-column">
+    <form action="/projects/{{ project.id }}/rename" method="post" class="panel">
+      <h2>Thông tin bài học</h2>
+      <label for="name">Tên project</label>
+      <div class="form-row">
+        <input id="name" name="name" maxlength="120" required value="{{ project.name }}">
+        <button type="submit" class="secondary">Lưu tên</button>
+      </div>
+    </form>
+
+    <form action="/projects/{{ project.id }}/videos" method="post" enctype="multipart/form-data" class="panel">
+      <h2>Upload video</h2>
+      <label for="video_file">MP4, MKV, MOV, AVI, WebM hoặc M4V</label>
+      <div class="form-row">
+        <input id="video_file" type="file" name="video_file" accept="video/*" required>
+        <button type="submit">Upload</button>
+      </div>
+      <p class="hint">Trang sẽ chờ trong lúc copy file và đọc metadata bằng ffprobe.</p>
+    </form>
+  </div>
+
+  <section class="video-list">
+    <h2>Video ({{ project.videos|length }})</h2>
+    {% for video in project.videos|sort(attribute='created_at', reverse=true) %}
+      {% set ocr = ocr_outputs[video.id] %}
+      <article
+        id="video-{{ video.id }}"
+        class="video-card"
+        {% if ocr.job %}data-ocr-job-id="{{ ocr.job.job_id }}" data-ocr-job-status="{{ ocr.job.status }}"{% endif %}
+      >
+        <video controls preload="metadata" src="/projects/{{ project.id }}/videos/{{ video.id }}/stream"></video>
+        <div class="video-info">
+          <h3>{{ video.original_filename }}</h3>
+          <dl class="metadata">
+            <div><dt>Thời lượng</dt><dd>{{ video.duration_seconds|duration }}</dd></div>
+            <div><dt>Độ phân giải</dt><dd>{{ video.width }} × {{ video.height }}</dd></div>
+            <div><dt>FPS</dt><dd>{{ video.fps }}</dd></div>
+            <div><dt>Video codec</dt><dd>{{ video.video_codec }}</dd></div>
+            <div><dt>Audio codec</dt><dd>{{ video.audio_codec or 'Không có' }}</dd></div>
+            <div><dt>Dung lượng</dt><dd>{{ video.size_bytes|filesize }}</dd></div>
+          </dl>
+          <div class="ocr-actions">
+            <h4>Subtitle tiếng Anh</h4>
+            {% if ocr.exists %}
+              <a class="button-link" href="/projects/{{ project.id }}/videos/{{ video.id }}/english-subtitles">Tải SRT tiếng Anh</a>
+              {% if ocr.metrics.subtitle_cues is defined %}
+                <span class="ocr-summary">{{ ocr.metrics.subtitle_cues }} cue · {{ ocr.metrics.ocr_failures }} lỗi OCR</span>
+              {% endif %}
+            {% endif %}
+
+            {% if ocr.job and ocr.job.status in ['queued', 'running'] %}
+              <div class="ocr-job-status">
+                <span class="ocr-message">{{ ocr.job.message }}</span>
+                <progress max="100" value="{{ ocr.job.progress }}"></progress>
+              </div>
+            {% elif ocr.job and ocr.job.status == 'failed' %}
+              <p class="job-error">{{ ocr.job.error }}</p>
+              <form action="/jobs/{{ ocr.job.job_id }}/retry" method="post">
+                <button type="submit" {% if job_queue_busy %}disabled{% endif %}>Thử lại OCR</button>
+              </form>
+            {% else %}
+              <form action="/projects/{{ project.id }}/videos/{{ video.id }}/extract-subtitles" method="post">
+                <button type="submit" {% if job_queue_busy %}disabled{% endif %}>
+                  {% if ocr.exists %}Trích xuất lại{% else %}Trích xuất SRT tiếng Anh{% endif %}
+                </button>
+              </form>
+            {% endif %}
+          </div>
+          <a class="button-link" href="/projects/{{ project.id }}/videos/{{ video.id }}/subtitles">Chỉnh subtitle tiếng Việt</a>
+          <form action="/projects/{{ project.id }}/videos/{{ video.id }}/delete" method="post" onsubmit="return confirm('Xóa video này?')">
+            <button type="submit" class="danger secondary">Xóa video</button>
+          </form>
+        </div>
+      </article>
+    {% else %}
+      <div class="empty-state">Project này chưa có video.</div>
+    {% endfor %}
+  </section>
+  <script src="{{ url_for('static', path='/project_detail.js') }}" defer></script>
+{% endblock %}

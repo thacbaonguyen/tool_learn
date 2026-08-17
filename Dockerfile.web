@@ -1,0 +1,52 @@
+FROM python:3.11-slim-bookworm
+
+ARG V_TTS_COMMIT=e22eef3267869375e40a096b376cde94aa41e610
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    CUDA_VISIBLE_DEVICES="" \
+    OMP_NUM_THREADS=2 \
+    OPENBLAS_NUM_THREADS=2 \
+    MKL_NUM_THREADS=2
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+       espeak-ng ffmpeg fonts-liberation git libsndfile1 \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN pip install \
+      torch==2.5.1+cpu torchaudio==2.5.1+cpu \
+      --index-url https://download.pytorch.org/whl/cpu
+
+RUN set -eux; \
+    for attempt in 1 2 3; do \
+      git clone --depth 1 --filter=blob:none --no-checkout --branch dev \
+        https://github.com/tronghieuit/v-tts.git /opt/v-tts && break; \
+      rm -rf /opt/v-tts; \
+      test "$attempt" -lt 3; \
+      sleep 2; \
+    done; \
+    git -C /opt/v-tts sparse-checkout init --cone \
+    && git -C /opt/v-tts sparse-checkout set v_tts src setup.py README.md \
+    && git -C /opt/v-tts checkout "${V_TTS_COMMIT}" \
+    && sed -i '/"gradio>=5.0.0",/d' /opt/v-tts/setup.py \
+    && pip install /opt/v-tts \
+    && rm -rf /opt/v-tts/.git
+
+# OCR is kept in a late layer so changes do not invalidate the large PyTorch/V-TTS layers.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-eng \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+COPY pyproject.toml README.md ./
+COPY app ./app
+COPY poc ./poc
+COPY tests ./tests
+RUN pip install ".[dev]"
+
+EXPOSE 8000
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

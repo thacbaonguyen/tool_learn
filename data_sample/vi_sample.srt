@@ -1,0 +1,16 @@
+1
+00:00:00,160 --> 00:00:03,280
+Chúng ta sắp kết thúc phần này, nhưng trước tiên hãy nói về các công cụ bảo mật.
+
+2
+00:00:03,280 --> 00:00:06,680
+Đây là những công cụ bảo mật có trong IAM.
+
+3
+00:00:06,680 --> 00:00:10,639
+Chúng ta có thể tạo báo cáo thông tin xác thực IAM.
+
+4
+00:00:10,639 --> 00:00:14,799
+Báo cáo này được tạo ở cấp tài khoản và chứa danh sách người dùng.
+

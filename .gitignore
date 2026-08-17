@@ -1,0 +1,11 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.egg-info/
+artifacts/
+data/models/
+data/app.db*
+data/projects/
+data/voice/
+data/worker-heartbeat.json
+data/worker.lock

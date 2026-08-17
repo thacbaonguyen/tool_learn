@@ -1,0 +1,263 @@
+{% extends "base.html" %}
+{% block title %}Subtitle · {{ video.original_filename }}{% endblock %}
+{% block content %}
+  <a href="/projects/{{ project.id }}" class="back-link">← {{ project.name }}</a>
+
+  <section class="page-heading">
+    <div>
+      <h1>Subtitle tiếng Việt</h1>
+      <p>{{ video.original_filename }} · {{ video.width }} × {{ video.height }}</p>
+    </div>
+  </section>
+
+  {% if error %}<div class="alert">{{ error }}</div>{% endif %}
+
+  <form action="/projects/{{ project.id }}/videos/{{ video.id }}/subtitles/import" method="post" enctype="multipart/form-data" class="panel subtitle-import">
+    <div>
+      <h2>Import SRT tiếng Việt</h2>
+      <p class="hint">UTF-8, tối đa 2 MB. Import lại sẽ thay cue nhưng giữ nguyên vị trí và style.</p>
+    </div>
+    <div class="form-row">
+      <input type="file" name="srt_file" accept=".srt,application/x-subrip" required>
+      <button type="submit">Import SRT</button>
+    </div>
+  </form>
+
+  {% if track %}
+    <div class="editor-layout">
+      <section class="editor-main">
+        <div
+          id="subtitle-stage"
+          class="subtitle-stage"
+          style="aspect-ratio: {{ video.width }} / {{ video.height }}"
+          data-style-url="/projects/{{ project.id }}/videos/{{ video.id }}/subtitles/style"
+        >
+          <video id="subtitle-video" controls preload="metadata" src="/projects/{{ project.id }}/videos/{{ video.id }}/stream"></video>
+          <div
+            id="subtitle-overlay"
+            class="subtitle-overlay"
+            data-x="{{ track.x_ratio }}"
+            data-y="{{ track.y_ratio }}"
+            data-width="{{ track.width_ratio }}"
+            data-height="{{ track.height_ratio }}"
+            data-font-family="{{ track.font_family }}"
+            data-font-size="{{ track.font_size_ratio }}"
+            data-text-color="{{ track.text_color }}"
+            data-background-color="{{ track.background_color }}"
+          >
+            <span id="subtitle-text"></span>
+            <button id="subtitle-resize" class="subtitle-resize" type="button" aria-label="Thay đổi kích thước"></button>
+          </div>
+        </div>
+        <p class="hint editor-tip">Phát hoặc tua video để xem cue. Kéo khung subtitle để đổi vị trí; kéo góc phải dưới để đổi kích thước.</p>
+      </section>
+
+      <aside class="panel style-panel">
+        <h2>Hiển thị</h2>
+        <label for="font-family">Font chữ</label>
+        <select id="font-family">
+          {% for font in font_families %}
+            <option value="{{ font }}" {% if font == track.font_family %}selected{% endif %}>{{ font }}</option>
+          {% endfor %}
+        </select>
+
+        <label for="font-size">Cỡ chữ <output id="font-size-output"></output></label>
+        <input id="font-size" type="range" min="0.015" max="0.15" step="0.001" value="{{ track.font_size_ratio }}">
+
+        <div class="color-row">
+          <label for="text-color">Màu chữ<input id="text-color" type="color" value="{{ track.text_color }}"></label>
+          <label for="background-color">Màu nền<input id="background-color" type="color" value="{{ track.background_color }}"></label>
+        </div>
+
+        <dl class="normalized-values">
+          <div><dt>X</dt><dd id="value-x"></dd></div>
+          <div><dt>Y</dt><dd id="value-y"></dd></div>
+          <div><dt>Rộng</dt><dd id="value-width"></dd></div>
+          <div><dt>Cao</dt><dd id="value-height"></dd></div>
+        </dl>
+        <p id="save-status" class="save-status" aria-live="polite">Đã lưu</p>
+        <p class="hint">Các giá trị trên là tỷ lệ so với kích thước video, không phải pixel.</p>
+        <p class="track-info">{{ track.source_filename }} · {{ track.cues|length }} cue</p>
+      </aside>
+    </div>
+
+    <details class="panel advanced-tools">
+      <summary>Tùy chọn nâng cao: giọng riêng, từ điển, preview từng bước</summary>
+    <section id="tts-section" class="tts-panel">
+      <div class="tts-heading">
+        <div>
+          <h2>Clone giọng & TTS tiếng Việt</h2>
+          <p class="hint">Model V-TTS chạy local trên CPU. Audio từng cue được cache tự động.</p>
+        </div>
+        {% if tts_manifest.cue_count %}
+          <span class="local-badge">{{ tts_manifest.cache_hits }}/{{ tts_manifest.cue_count }} cache hit</span>
+        {% endif %}
+      </div>
+
+      <div class="tts-settings">
+        <div class="tts-card">
+          <h3>1. Giọng mẫu</h3>
+          {% if tts_reference %}
+            <audio controls preload="none" src="/projects/{{ project.id }}/videos/{{ video.id }}/tts/reference"></audio>
+            {% if tts_reference_scope == 'global' %}
+              <p class="hint">Đang tự dùng giọng toàn cục: {{ tts_reference.source }}</p>
+            {% else %}
+              <p class="hint">Video này đang dùng giọng riêng.</p>
+            {% endif %}
+          {% else %}
+            <p class="final-requirement">Chưa có giọng mẫu. Chép file vào <code>data/voice/</code> rồi chạy <code>sudo make voice</code>.</p>
+          {% endif %}
+          <details class="voice-override">
+            <summary>Tùy chọn: lấy giọng riêng từ video này</summary>
+            <form action="/projects/{{ project.id }}/videos/{{ video.id }}/tts/reference" method="post">
+              <div class="render-fields">
+                <label for="reference-start">Bắt đầu (giây)
+                  <input id="reference-start" name="start_seconds" type="number" min="0" max="{{ video.duration_seconds }}" step="0.1" value="0" required>
+                </label>
+                <label for="reference-duration">Độ dài (3–30 giây)
+                  <input id="reference-duration" name="duration_seconds" type="number" min="3" max="30" step="0.5" value="8" required>
+                </label>
+              </div>
+              <button id="use-current-reference-time" type="button" class="secondary">Lấy thời điểm đang xem</button>
+              <button type="submit">Dùng giọng riêng</button>
+            </form>
+          </details>
+        </div>
+
+        <form action="/projects/{{ project.id }}/videos/{{ video.id }}/tts/dictionary" method="post" class="tts-card">
+          <h3>2. Từ điển phát âm</h3>
+          <label for="dictionary-text">Mỗi dòng có dạng từ=cách đọc</label>
+          <textarea id="dictionary-text" name="dictionary_text" rows="7" spellcheck="false">{{ tts_dictionary }}</textarea>
+          <button type="submit" class="secondary">Lưu từ điển</button>
+        </form>
+      </div>
+
+      <form action="/projects/{{ project.id }}/videos/{{ video.id }}/tts/generate" method="post" class="tts-generate-form" data-confirm="Tạo TTS cho các cue chưa có cache có thể mất nhiều thời gian trên CPU. Tiếp tục?">
+        <div>
+          <h3>3. Tạo audio từng cue</h3>
+          <p class="hint">Câu đã có cache sẽ được dùng lại. Thay giọng mẫu hoặc từ điển sẽ tạo cache phù hợp mới.</p>
+        </div>
+        <button type="submit" {% if not tts_has_reference %}disabled{% endif %}>Tạo TTS cho {{ track.cues|length }} cue</button>
+      </form>
+
+      {% if tts_items %}
+        <div class="tts-cue-list">
+          {% for cue in track.cues %}
+            {% set item = tts_items.get(cue.sequence) %}
+            <article class="tts-cue {% if item and item.needs_review %}needs-review{% endif %}">
+              <div class="tts-cue-number">{{ cue.sequence }}</div>
+              <div class="tts-cue-content">
+                <p>{{ cue.text }}</p>
+                {% if item %}
+                  {% if item.processed_text != item.original_text %}<small>Đọc: {{ item.processed_text }}</small>{% endif %}
+                  <div class="tts-timing">
+                    Audio {{ '%.2f'|format(item.audio_duration) }}s / cue {{ '%.2f'|format(item.slot_duration) }}s
+                    {% if item.needs_review %}<strong>⚠ Dài hơn {{ '%.2f'|format(item.overflow_seconds) }}s</strong>{% endif %}
+                  </div>
+                {% endif %}
+              </div>
+              {% if item %}
+                <audio controls preload="none" src="/projects/{{ project.id }}/videos/{{ video.id }}/tts/audio/{{ item.cache_key }}"></audio>
+              {% else %}
+                <span class="tts-missing">Chưa tạo</span>
+              {% endif %}
+            </article>
+          {% endfor %}
+        </div>
+      {% endif %}
+    </section>
+
+    <section id="render-output" class="render-panel">
+      <div class="render-heading">
+        <div>
+          <h2>Render bằng FFmpeg + ASS</h2>
+          <p class="hint">Khung đã chọn sẽ che subtitle Anh trên toàn đoạn. Output không chứa audio gốc.</p>
+        </div>
+      </div>
+      <div class="render-actions">
+        <form action="/projects/{{ project.id }}/videos/{{ video.id }}/renders/preview" method="post" class="render-form render-preview-form">
+          <h3>Preview ngắn</h3>
+          <div class="render-fields">
+            <label for="preview-start">Bắt đầu (giây)
+              <input id="preview-start" name="start_seconds" type="number" min="0" max="{{ video.duration_seconds }}" step="0.1" value="0" required>
+            </label>
+            <label for="preview-duration">Độ dài (giây)
+              <input id="preview-duration" name="duration_seconds" type="number" min="1" max="60" step="1" value="15" required>
+            </label>
+          </div>
+          <button id="use-current-time" type="button" class="secondary">Lấy thời điểm đang xem</button>
+          <button type="submit">Render preview</button>
+        </form>
+        <form action="/projects/{{ project.id }}/videos/{{ video.id }}/renders/full" method="post" class="render-form render-full-form" data-confirm="Render toàn bộ video có thể mất nhiều thời gian. Tiếp tục?">
+          <h3>Toàn bộ video</h3>
+          <p class="hint">Encode H.264 CPU, preset veryfast. Chỉ chạy một video mỗi lần.</p>
+          <button type="submit">Render toàn bộ</button>
+        </form>
+      </div>
+
+      {% if render_outputs.preview.exists or render_outputs.full.exists %}
+        <div class="render-results">
+          {% for kind, label in [('preview', 'Preview'), ('full', 'Video hoàn chỉnh')] %}
+            {% if render_outputs[kind].exists %}
+              <article class="render-result">
+                <h3>{{ label }} · {{ render_outputs[kind].size|filesize }}</h3>
+                <video controls preload="metadata" src="/projects/{{ project.id }}/videos/{{ video.id }}/renders/{{ kind }}?v={{ render_outputs[kind].version }}"></video>
+                <a class="button-link" href="/projects/{{ project.id }}/videos/{{ video.id }}/renders/{{ kind }}?download=true">Tải MP4</a>
+              </article>
+            {% endif %}
+          {% endfor %}
+        </div>
+      {% endif %}
+    </section>
+    </details>
+
+    <section
+      id="final-output"
+      class="panel final-panel"
+      {% if final_job %}data-job-id="{{ final_job.job_id }}" data-job-status="{{ final_job.status }}"{% endif %}
+    >
+      <div class="final-heading">
+        <div>
+          <h2>Video hoàn chỉnh</h2>
+          <p class="hint">Import SRT sẽ tự tạo giọng đọc, che subtitle Anh, render subtitle Việt và ghép audio AAC.</p>
+        </div>
+        <form action="/projects/{{ project.id }}/videos/{{ video.id }}/build" method="post" class="auto-build-form">
+          <button type="submit" {% if not tts_has_reference or final_runner_busy %}disabled{% endif %}>Tạo lại video</button>
+        </form>
+      </div>
+
+      {% if not tts_has_reference %}<p class="final-requirement">Chưa có giọng chung. Chép file vào data/voice rồi chạy sudo make voice.</p>{% endif %}
+      {% if final_runner_busy and (not final_job or final_job.status not in ['queued', 'running']) %}<p class="final-requirement">Một video khác đang được xử lý.</p>{% endif %}
+
+      {% if final_job %}
+        <div class="job-status {% if final_job.status == 'failed' %}job-failed{% endif %}">
+          <div class="job-status-line">
+            <strong id="job-message">{{ final_job.message }}</strong>
+            <span id="job-percent">{{ final_job.progress }}%</span>
+          </div>
+          <progress id="job-progress" max="100" value="{{ final_job.progress }}"></progress>
+          <p class="hint">Lần thử {{ final_job.attempts }}/{{ final_job.max_attempts }}</p>
+          <p id="job-error" class="job-error">{{ final_job.error or '' }}</p>
+          {% if final_job.status == 'failed' %}
+            <form action="/jobs/{{ final_job.job_id }}/retry" method="post">
+              <button type="submit" {% if final_runner_busy %}disabled{% endif %}>Thử lại job</button>
+            </form>
+          {% endif %}
+        </div>
+      {% endif %}
+
+      {% if final_output.exists %}
+        <div class="final-result">
+          <h3>Video tiếng Việt · {{ final_output.size|filesize }}</h3>
+          <video controls preload="metadata" src="/projects/{{ project.id }}/videos/{{ video.id }}/final?v={{ final_output.version }}"></video>
+          <a class="button-link" href="/projects/{{ project.id }}/videos/{{ video.id }}/final?download=true">Tải MP4 hoàn chỉnh</a>
+        </div>
+      {% endif %}
+    </section>
+
+    <script id="subtitle-cues" type="application/json">{{ cues|tojson }}</script>
+    <script src="{{ url_for('static', path='/subtitle_editor.js') }}" defer></script>
+  {% else %}
+    <div class="empty-state subtitle-empty">Import file SRT để mở trình chỉnh sửa subtitle.</div>
+  {% endif %}
+{% endblock %}

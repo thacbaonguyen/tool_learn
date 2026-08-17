@@ -1,0 +1,101 @@
+x-runtime: &runtime
+  image: local-video-lessons:latest
+  build:
+    context: .
+    dockerfile: Dockerfile.web
+  volumes:
+    - ./data:/app/data:Z
+    - ./data/models:/root/.cache:Z
+  environment: &runtime-environment
+    APP_DATA_DIR: /app/data
+    APP_PORT: "${APP_PORT:-8010}"
+    CUDA_VISIBLE_DEVICES: ""
+    TTS_LOCAL_ONLY: "1"
+    HF_HUB_OFFLINE: "1"
+    TRANSFORMERS_OFFLINE: "1"
+    V_TTS_HF_REPO: letrggghieu/v-zeroshot-voice-cloning
+    V_TTS_HF_REVISION: 83deb9f5ab591ca79840c9042dbef37dd2e5780e
+    OMP_NUM_THREADS: "2"
+    OPENBLAS_NUM_THREADS: "2"
+    MKL_NUM_THREADS: "2"
+  restart: unless-stopped
+
+services:
+  web:
+    <<: *runtime
+    command: ["uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", "${APP_PORT:-8010}"]
+    network_mode: host
+    depends_on:
+      worker:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os, urllib.request; urllib.request.urlopen('http://127.0.0.1:' + os.getenv('APP_PORT', '8010') + '/health', timeout=2)"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    mem_limit: 12g
+    cpus: 3
+
+  worker:
+    <<: *runtime
+    command: ["python", "-m", "app.worker"]
+    network_mode: none
+    healthcheck:
+      test: ["CMD", "python", "-m", "app.worker", "--healthcheck"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    stop_grace_period: 30s
+    mem_limit: 4g
+    cpus: 2
+
+  model-setup:
+    <<: *runtime
+    profiles: ["setup"]
+    restart: "no"
+    command:
+      - python
+      - -c
+      - from poc.tts import VTTSProvider; VTTSProvider(); print('TTS model ready')
+    environment:
+      <<: *runtime-environment
+      TTS_LOCAL_ONLY: "0"
+      HF_HUB_OFFLINE: "0"
+      TRANSFORMERS_OFFLINE: "0"
+    networks: [installer]
+
+  phase0:
+    profiles: ["phase0"]
+    build: .
+    volumes:
+      - ./:/app:Z
+      - ./data/models:/root/.cache:Z
+    environment:
+      OMP_NUM_THREADS: "2"
+      OPENBLAS_NUM_THREADS: "2"
+      MKL_NUM_THREADS: "2"
+    mem_limit: 12g
+    cpus: 3
+
+  tts:
+    profiles: ["phase0"]
+    build:
+      context: .
+      dockerfile: Dockerfile.tts
+    volumes:
+      - ./:/app:Z
+      - ./data/models:/root/.cache:Z
+    environment:
+      CUDA_VISIBLE_DEVICES: ""
+      V_TTS_HF_REPO: letrggghieu/v-zeroshot-voice-cloning
+      V_TTS_HF_REVISION: 83deb9f5ab591ca79840c9042dbef37dd2e5780e
+      OMP_NUM_THREADS: "2"
+      OPENBLAS_NUM_THREADS: "2"
+      MKL_NUM_THREADS: "2"
+    mem_limit: 12g
+    cpus: 3
+
+networks:
+  installer: {}

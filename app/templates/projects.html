@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Projects · Local Video Lessons{% endblock %}
+{% block content %}
+  <section class="page-heading">
+    <div>
+      <h1>Projects</h1>
+      <p>Mỗi project tương ứng với một bài học.</p>
+    </div>
+  </section>
+
+  {% if error %}<div class="alert">{{ error }}</div>{% endif %}
+
+  <form action="/projects" method="post" class="panel create-form">
+    <label for="name">Tên project</label>
+    <div class="form-row">
+      <input id="name" name="name" maxlength="120" required placeholder="Ví dụ: IAM Security Tools">
+      <button type="submit">Tạo project</button>
+    </div>
+  </form>
+
+  <section class="project-grid">
+    {% for project in projects %}
+      <a class="project-card" href="/projects/{{ project.id }}">
+        <h2>{{ project.name }}</h2>
+        <p>{{ project.videos|length }} video</p>
+        <small>Cập nhật {{ project.updated_at.strftime('%d/%m/%Y %H:%M') }}</small>
+      </a>
+    {% else %}
+      <div class="empty-state">Chưa có project. Hãy tạo bài học đầu tiên.</div>
+    {% endfor %}
+  </section>
+{% endblock %}
+
